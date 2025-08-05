@@ -15,7 +15,6 @@ It’s ideal for experimenting with motion tracking, basic sensor fusion, or lea
 - Displays:
   - X and Z displacement (in cm)
   - Frequency of motion change in X and Z
-  - A static label (“SUMMIT”) for project ID or team name
 
 ---
 
