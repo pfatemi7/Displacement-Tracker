@@ -30,7 +30,7 @@ It’s ideal for experimenting with motion tracking, basic sensor fusion, or lea
 
 ##  Wiring Overview
 
-| Module         | Arduino Pin       |
+| Module         |  Pin       |
 |----------------|------------------|
 | ADXL345 SDA     | A4          |
 | ADXL345 SCL     | A5           |
