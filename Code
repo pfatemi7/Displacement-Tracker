@@ -1,0 +1,208 @@
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_ADXL345_U.h>
+
+
+#define SCREEN_WIDTH 128 
+#define SCREEN_HEIGHT 32 
+
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+#define OLED_RESET     -1 
+//Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
+
+
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire);
+
+float calibration_x = 0.0;
+float calibration_y = 0.0;
+float calibration_z = 0.0;
+
+float displacement_x_start = 0.0;
+float displacement_y_start = 0.0;
+float displacement_z_start = 0.0;
+
+float alpha = 0.6; // Filter coefficient (0 < alpha < 1)
+
+
+
+float accel_x_filtered = 0.0;
+float accel_y_filtered = 0.0;
+float accel_z_filtered = 0.0;
+
+unsigned long last_time = 0;
+float last_displacement_x = 0.0;
+float last_displacement_y = 0.0;
+float last_displacement_z = 0.0;
+
+
+
+//  Initialization
+
+void setup() {
+  Serial.begin(9600);
+  
+//sesnor
+   while (!Serial) {}
+
+  /* Initialise the sensor */
+  if(!accel.begin()) {
+    Serial.println("Could not find a valid sensor, check wiring!");
+    while (1);
+  }
+
+  accel.setRange(ADXL345_RANGE_16_G);
+
+  for(int i=0; i<10; i++) {
+    sensors_event_t event;
+    accel.getEvent(&event);
+    calibration_x += event.acceleration.x;
+    calibration_y += event.acceleration.y;
+    calibration_z += event.acceleration.z;
+    delay(100);
+  }
+  calibration_x /= 10.0;
+  calibration_y /= 10.0;
+  calibration_z /= 10.0;
+  
+  sensors_event_t event_start;
+  accel.getEvent(&event_start);
+  float accel_x_start = event_start.acceleration.x - calibration_x;
+  float accel_y_start = event_start.acceleration.y - calibration_y;
+  float accel_z_start = event_start.acceleration.z - calibration_z;
+  accel_x_filtered = accel_x_start;
+  accel_y_filtered = accel_y_start;
+  accel_z_filtered = accel_z_start;
+  displacement_x_start = 0.5 * accel_x_start * 0.01;
+  displacement_y_start = 0.5 * accel_y_start * 0.01;
+  displacement_z_start = 0.5 * accel_z_start * 0.01;
+  //lcd
+/*
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // I2C Address 0x3C for 128x32
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+
+  
+  display.clearDisplay(); 
+  display.setTextSize(1);                    // Set for small font
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);                    // Set cursor to upper left
+  display.println("X Displacement:1.2cm");  // Println moves the cursor down
+  display.println("Y Displacement:0.47cm");
+  display.println("");
+  display.println("SUMMIT");
+
+ 
+  display.display();*/
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  // Clear the display
+  display.clearDisplay();
+}
+
+//  Main
+
+void loop() {
+sensors_event_t event;
+  accel.getEvent(&event);
+
+  /* Apply the calibration values */
+  float acceleration_x = event.acceleration.x - calibration_x;
+  float acceleration_y = event.acceleration.y - calibration_y;
+  float acceleration_z = event.acceleration.z - calibration_z;
+
+  /* Apply a low-pass filter */
+  accel_x_filtered = alpha * acceleration_x + (1.0 - alpha) * accel_x_filtered;
+  accel_y_filtered = alpha * acceleration_y + (1.0 - alpha) * accel_y_filtered;
+  accel_z_filtered = alpha * acceleration_z + (1.0 - alpha) * accel_z_filtered;
+
+  /* Calculate the displacement: d = 0.5 * a * t^2 */
+  float time_step = 0.1; // 100ms
+  float displacement_x = displacement_x_start + 0.5 * accel_x_filtered * time_step * time_step * 100.0;
+  float displacement_y = displacement_y_start + 0.5 * accel_y_filtered * time_step * time_step * 100.0;
+  float displacement_z = displacement_z_start + 0.5 * accel_z_filtered * time_step * time_step * 100.0;
+
+
+   Serial.print("Displacement: ");
+  //Serial.print(displacement_x/10.0, 4);
+  //Serial.print(", Y=");
+  //Serial.print(displacement_y/10.0, 4);
+  //Serial.print(", Z=");
+   Serial.println(displacement_z/*10.0, 4*/);
+
+// Calculate frequency of displacement change
+  static float prev_displacement_x = displacement_x;
+  static float prev_displacement_y = displacement_y;
+  static float prev_displacement_z = displacement_z;
+  static unsigned long prev_time = millis();
+
+  unsigned long current_time = millis();
+  float time_diff = (current_time - prev_time) / 1000.0; // convert to seconds
+  if (time_diff > 0.0) {
+    float frequency_x = abs(displacement_x - prev_displacement_x) / time_diff;
+    float frequency_y = abs(displacement_y - prev_displacement_y) / time_diff;
+    float frequency_z = abs(displacement_z - prev_displacement_z) / time_diff;
+
+    //Serial.print("Frequency X: ");
+    //Serial.print(frequency_x);
+    //Serial.print(" Hz  Y: ");
+    //Serial.print(frequency_y);
+    //Serial.print(" Hz  Z: ");
+    //Serial.print(" Hz");
+    //Serial.println(frequency_z);
+    
+
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(80,0);
+    display.print(frequency_x);
+    display.println(" Hz");
+    display.display();
+
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(80,10);
+    display.print(frequency_z);
+    display.println(" Hz");
+    display.display();
+
+    prev_displacement_x = displacement_x;
+    prev_displacement_y = displacement_y;
+    prev_displacement_z = displacement_z;
+    prev_time = current_time;
+  }
+
+  //display
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  display.print("X:");
+  display.print(displacement_x);
+  display.println(" cm");
+
+  display.display();
+
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,10);
+  display.print("Z:");
+  display.print(displacement_z);
+  display.println(" cm");
+  display.display();
+
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,25);
+  display.println("SUMMIT");
+  display.display();
+
+  delay(300);
+  display.clearDisplay();
+
+}
+
